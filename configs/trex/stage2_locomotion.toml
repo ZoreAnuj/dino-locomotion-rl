@@ -1,0 +1,68 @@
+[stage]
+name = "locomotion"
+description = "Learn forward walking/running"
+
+[env]
+forward_vel_weight = 2.0               # Match raptor: was 0.8, far too low. Primary driver of locomotion speed.
+                                       # At 2.0, forward velocity dominates the reward landscape and
+                                       # pushes the agent past the slow-walking local optimum.
+alive_bonus = 0.5                      # Keep: already reduced from Stage 1
+fall_penalty = -50.0                   # Keep: reasonable risk/reward balance
+energy_penalty_weight = 0.002          # Increase from 0.001: CoT was near 0, provide some efficiency signal
+tail_stability_weight = 0.05           # Reduce from 0.08 to match raptor: tail oscillation is less
+                                       # critical than forward progress at this stage
+posture_weight = 0.2                   # Reduce from 0.5 to match raptor: allow dynamic forward lean for running
+nosedive_weight = 0.5                  # Reduce from 1.0 (raptor uses 0.3): allow head-forward running posture
+                                       # Keep slightly above raptor since head_contact is major termination cause
+height_weight = 0.3                    # Reduce from 1.0: pelvis already at 0.932m (above 0.90 target),
+                                       # this was wasting reward budget; raptor doesn't use height at all
+gait_symmetry_weight = 0.0            # Keep disabled: formula is inverted
+smoothness_weight = 0.05              # Reduce from 0.1 to match raptor: less penalty for dynamic motion
+heading_weight = 0.3                   # Reduce from 0.5 to match raptor: heading is already ~0.99
+lateral_penalty_weight = 0.1           # Reduce from 0.3 to match raptor: allow lateral dynamics for gait
+bite_bonus = 0.0
+bite_approach_weight = 0.0
+prey_distance_range = [8.0, 12.0]
+max_episode_steps = 1000
+
+[ppo]
+learning_rate = 5e-5                    # Reduce from 1e-4: prevent catastrophic forgetting of Stage 1 balance
+learning_rate_end = 1e-5
+n_steps = 4096                          # Increase from 2048: larger rollout buffer for more stable gradients
+batch_size = 256                       # Increase from 128 to match raptor: more stable gradient estimates
+n_epochs = 10
+gamma = 0.995                           # Increase from 0.99: longer horizon values sustained locomotion
+gae_lambda = 0.95
+clip_range = 0.2
+ent_coef = 0.005
+
+[ppo.policy_kwargs]
+net_arch = [512, 256]                  # Larger first layer for T-Rex's higher-dimensional obs space (83 vs raptor's 67)
+
+[sac]
+learning_rate = 1e-4              # 3x reduction from Stage 1 — replay buffer provides natural gradient smoothing
+batch_size = 256
+gamma = 0.99                     # Keep at 0.99 — replay staleness + T-Rex's high obs dimensionality (83) makes
+                                 # high gamma risky; the buffer naturally handles temporal credit assignment
+tau = 0.005
+ent_coef = "auto"                # Auto-entropy handles Stage 1→2 transition exploration naturally
+buffer_size = 1_000_000          # Large buffer retains Stage 1 balance transitions — key advantage over PPO
+                                 # for mitigating catastrophic forgetting (PPO's biggest pain point for T-Rex)
+learning_starts = 10_000
+train_freq = 4                   # Batch env steps before training — 4× less Python loop overhead
+gradient_steps = 4               # Match train_freq to maintain update-to-data ratio
+
+[sac.policy_kwargs]
+net_arch = [512, 256]            # Larger first layer for T-Rex's higher-dimensional obs space (83 vs raptor's 67)
+
+[curriculum]
+timesteps = 8000000                     # Increase from 5M: your best T-Rex stage2 was only at 2M steps and still improving
+min_avg_reward = 100.0
+min_avg_episode_length = 750            # Reduce from 800: T-Rex best run reached 682, 800 is too strict
+min_avg_forward_vel = 2.0               # Reduce from 0.4: T-Rex is slower/heavier than velociraptor
+required_consecutive = 3
+warmup_timesteps = 300000               # Increased from 100k: give critic more time to adapt to new reward landscape (matches raptor stage 2 proportional warmup)
+warmup_clip_range = 0.02                # Small clip range during warm-up to limit policy change
+warmup_ent_coef = 0.02                  # Higher entropy during warm-up to maintain exploration
+ramp_timesteps = 2000000                # Increased from 500k: much slower ramp prevents reward-chasing collapse. 500k was only 6% of 8M budget; 2M is 25%, matching raptor stage 2 proportion.
+ramp_start_value = 0.2                  # Increased from 0.1: start with detectable forward signal (matches raptor stage 2)

@@ -1,0 +1,61 @@
+[stage]
+name = "balance"
+description = "Learn to stand and balance without falling"
+
+[env]
+forward_vel_weight = 0.0
+backward_vel_penalty_weight = 0.0              # Redundant with drift_penalty — drift covers all horizontal directions equally
+drift_penalty_weight = 0.3                     # Penalize horizontal displacement from spawn; prevents hop-to-balance exploit
+alive_bonus = 2.0
+fall_penalty = -50.0                    # Match stage 2 and T-Rex stage 1; default -100 is disproportionate with alive_bonus=2.0
+energy_penalty_weight = 0.05
+tail_stability_weight = 0.02
+posture_weight = 1.5
+nosedive_weight = 1.5
+gait_symmetry_weight = 0.0
+smoothness_weight = 0.05
+heading_weight = 0.1                             # Small heading reward to prevent spin-to-balance exploits
+spin_penalty_weight = 0.1                        # Penalize pelvis angular velocity to directly discourage spinning
+speed_penalty_weight = 0.3                       # Penalize absolute 2D speed above threshold — complements drift penalty with instantaneous signal
+speed_penalty_threshold = 0.10                   # m/s — any speed above this incurs penalty
+strike_bonus = 0.0
+strike_approach_weight = 0.0
+prey_distance_range = [10.0, 15.0]
+max_episode_steps = 1000                  # Match stage 2/3 for consistent episode horizon across curriculum
+reset_noise_scale = 0.05                  # Increased from 0.01 default to improve robustness and reduce eval variance
+
+[ppo]
+learning_rate = 3e-4
+# learning_rate_end = 1e-5
+# lr_schedule = "cosine"                       # "linear" or "cosine" — cosine decays faster mid-training, protecting converged policies
+n_steps = 2048
+batch_size = 256
+n_epochs = 6                                 # Reduced from 10 to limit per-rollout over-updating
+gamma = 0.99                                 # Reduced from 0.995 to stabilise value estimation for balance
+gae_lambda = 0.95
+clip_range = 0.2
+# clip_range_end = 0.1                         # Anneal clip_range to constrain late-training policy updates
+ent_coef = 0.005
+
+[ppo.policy_kwargs]
+net_arch = [512, 256]
+
+[sac]
+learning_rate = 3e-4              # Match PPO starting LR — SAC tolerates higher LR due to replay buffer stability
+batch_size = 256                  # Standard SAC batch size; matches PPO
+gamma = 0.99                     # Match PPO Stage 1; shorter horizon suits balance task
+tau = 0.005                      # Soft target update rate — standard default
+ent_coef = "auto"                # SAC's key advantage: auto-tuned entropy eliminates manual exploration tuning
+buffer_size = 300_000            # Sufficient for 6M-step Stage 1; smaller buffer keeps transitions recent
+learning_starts = 10_000         # Collect 10K random transitions before gradient updates begin
+train_freq = 16                  # Collect 16 env steps before training — amortises gradient cost over more env steps
+gradient_steps = 8               # 2:1 data-to-update ratio — more gradient updates per env batch smooths learning curves
+
+[sac.policy_kwargs]
+net_arch = [512, 256]            # Match PPO architecture for fair comparison
+
+[curriculum]
+timesteps = 6000000
+min_avg_reward = 100.0
+min_avg_episode_length = 750
+required_consecutive = 3
